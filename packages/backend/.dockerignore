@@ -9,4 +9,3 @@ Dockerfile
 coverage
 .nyc_output
 uploads
-tests
