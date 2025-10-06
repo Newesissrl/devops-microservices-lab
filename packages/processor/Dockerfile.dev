@@ -1,0 +1,9 @@
+FROM python:3.13-alpine
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# In development, run as root to handle volume mounts
+CMD ["python", "processor.py"]
