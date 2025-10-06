@@ -99,6 +99,7 @@ services:
     build:
       context: ./packages/lakepublisher
       dockerfile: Dockerfile
+      target: production
     container_name: expenses-lakepublisher
     restart: "no"
     environment:

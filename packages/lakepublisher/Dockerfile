@@ -15,7 +15,7 @@ COPY . .
 RUN dotnet publish -c Release -o out --no-restore
 
 # Runtime stage
-FROM mcr.microsoft.com/dotnet/runtime:9.0-alpine
+FROM mcr.microsoft.com/dotnet/runtime:9.0-alpine AS production
 
 WORKDIR /app
 
