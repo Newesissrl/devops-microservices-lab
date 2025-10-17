@@ -12,7 +12,7 @@ namespace: expenses
 imagePullSecrets:
   name: ghcr-secret
   dockerconfigjson: |
-    {"auths":{"ghcr.io":{"username":"raunodepasquale","password":"ghp_1RWjVPYHnNGtng9GwEazA5Cx8wx79C3zMKKu","auth":"cmF1bm9kZXBhc3F1YWxlOmdocF8xUldqVlBZSG5uR3RuZzlHd0VhekE1Q3g4d3g3OUMzek1LS3U="}}}
+    {"auths":{"ghcr.io":{"username":"myusername","password":"ghp_SSSSS","auth":"XXXXXX="}}}
 
 backend:
   replicaCount: 1
