@@ -1,0 +1,15 @@
+# qa environment specific values
+global:
+  replicaCount: 2
+
+frontend:
+  service:
+    type: LoadBalancer
+
+mongodb:
+  persistence:
+    size: 5Gi
+
+rabbitmq:
+  persistence:
+    size: 2Gi

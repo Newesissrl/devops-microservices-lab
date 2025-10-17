@@ -1,0 +1,15 @@
+# dev environment specific values
+global:
+  replicaCount: 1
+
+frontend:
+  service:
+    type: ClusterIP
+
+mongodb:
+  persistence:
+    size: 1Gi
+
+rabbitmq:
+  persistence:
+    size: 1Gi
