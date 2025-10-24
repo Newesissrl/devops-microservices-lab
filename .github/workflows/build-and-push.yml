@@ -6,7 +6,8 @@ on:
     paths:
       - 'packages/**'
     branches:
-      - '**'
+      - main
+      - develop
 
 env:
   REGISTRY: ghcr.io
