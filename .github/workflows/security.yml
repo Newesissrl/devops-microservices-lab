@@ -83,7 +83,7 @@ jobs:
       - name: Run Helm security scan
         run: |
           # Template Helm chart and scan
-          helm template expenses devops/helm/ > helm-templated.yaml
+          helm template expenses devops/helm/sampleproject > helm-templated.yaml
           ./kubesec scan helm-templated.yaml > kubesec-helm.json
 
       - name: Upload security scan results
