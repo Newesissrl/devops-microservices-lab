@@ -66,31 +66,41 @@ jobs:
         with:
           version: latest
 
-      - name: Run Kubesec scan on K8s manifests
-        run: |
-          wget https://github.com/controlplaneio/kubesec/releases/latest/download/kubesec_linux_amd64.tar.gz
-          tar -xzf kubesec_linux_amd64.tar.gz
-          chmod +x kubesec
-          
-          # Scan Kubernetes manifests
-          for file in devops/kubernetes/*.yaml; do
-            if [[ "$file" != *"secrets.yaml"* ]] && [[ "$file" != *"configmaps.yaml"* ]] && [[ "$file" != *"namespace.yaml"* ]]; then
-              echo "Scanning $file"
-              ./kubesec scan "$file" > "kubesec-$(basename $file .yaml).json" || echo "Warning: Kubesec scan failed for $file"
-            fi
-          done
+      - name: Run Checkov scan on K8s manifests
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: devops/kubernetes
+          framework: kubernetes
+          output_format: sarif
+          output_file_path: checkov-k8s.sarif
 
       - name: Run Helm security scan
         run: |
-          # Template Helm chart and scan
+          # Template Helm chart and scan with Checkov
           helm template expenses devops/helm/sampleproject > helm-templated.yaml
-          ./kubesec scan helm-templated.yaml > kubesec-helm.json
+          pip install checkov
+          checkov -f helm-templated.yaml --framework kubernetes --output sarif --output-file-path checkov-helm.sarif || true
+
+      - name: Upload Checkov scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-k8s.sarif
+          category: kubernetes-manifests
+        if: always()
+
+      - name: Upload Helm scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-helm.sarif
+          category: helm-chart
+        if: always()
 
       - name: Upload security scan results
         uses: actions/upload-artifact@v4
         with:
           name: kubernetes-security-results
-          path: kubesec-*.json
+          path: checkov-*.sarif
+        if: always()
 
   security-summary:
     runs-on: ubuntu-latest
