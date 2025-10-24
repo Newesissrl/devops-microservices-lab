@@ -1,55 +1,73 @@
+# Build and Push Docker Images Workflow
+# Builds production Docker images and pushes them to GitHub Container Registry
+# Only runs after PR approval (on main/develop branch push) to ensure security validation
+
 name: Build and Push Images
 
+# Trigger Configuration
+# Only runs after code is merged to main branches (post-security validation)
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Allow manual triggering for releases
   push:
     paths:
-      - 'packages/**'
+      - 'packages/**'  # Only trigger when application code changes
     branches:
-      - main
-      - develop
+      - main           # Production branch
+      - develop        # Development branch
 
+# Environment variables for container registry
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: ghcr.io                    # GitHub Container Registry
+  IMAGE_NAME: ${{ github.repository }} # Use repository name as base image name
 
 jobs:
+  # Job: Build and Push Container Images
+  # Builds production-ready Docker images and pushes to registry
   build-and-push:
     runs-on: ubuntu-latest
+    
+    # Required permissions for GitHub Container Registry
     permissions:
-      contents: read
-      packages: write
+      contents: read   # Read repository contents
+      packages: write  # Push to GitHub Container Registry
 
+    # Build all 4 services in parallel using matrix strategy
     strategy:
       matrix:
         service: [backend, frontend, processor, lakepublisher]
 
     steps:
+      # Get the source code
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Authenticate with GitHub Container Registry
       - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ${{ env.REGISTRY }}     # ghcr.io
+          username: ${{ github.actor }}     # GitHub username
+          password: ${{ secrets.GITHUB_TOKEN }}  # Automatic GitHub token
 
+      # Generate image tags and metadata
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
+          # Image name format: ghcr.io/owner/repo/service
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}
+          # Tag strategy:
           tags: |
-            type=sha,prefix={{branch}}-,format=short
-            type=ref,event=branch
-            type=ref,event=pr
+            type=sha,prefix={{branch}}-,format=short  # branch-abc1234
+            type=ref,event=branch                     # branch name
+            type=ref,event=pr                         # PR number
 
+      # Build Docker image and push to registry
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: ./packages/${{ matrix.service }}
-          target: production
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          context: ./packages/${{ matrix.service }}  # Build context for each service
+          target: production                         # Use production stage (runs tests first)
+          push: true                                # Push to registry
+          tags: ${{ steps.meta.outputs.tags }}     # Apply generated tags
+          labels: ${{ steps.meta.outputs.labels }} # Apply metadata labels
