@@ -1,0 +1,58 @@
+# GitVersion Configuration
+# Semantic versioning configuration for automated release tagging
+
+mode: ContinuousDeployment
+branches:
+  main:
+    mode: ContinuousDeployment
+    tag: ''
+    increment: Patch
+    prevent-increment-of-merged-branch-version: true
+    track-merge-target: false
+    source-branches: ['develop', 'release']
+  develop:
+    mode: ContinuousDeployment
+    tag: 'alpha'
+    increment: Minor
+    prevent-increment-of-merged-branch-version: false
+    track-merge-target: true
+    source-branches: []
+  release:
+    mode: ContinuousDeployment
+    tag: 'beta'
+    increment: None
+    prevent-increment-of-merged-branch-version: true
+    track-merge-target: false
+    source-branches: ['develop']
+  feature:
+    mode: ContinuousDeployment
+    tag: 'feature'
+    increment: Inherit
+    prevent-increment-of-merged-branch-version: false
+    track-merge-target: false
+    source-branches: ['develop']
+  hotfix:
+    mode: ContinuousDeployment
+    tag: 'hotfix'
+    increment: Patch
+    prevent-increment-of-merged-branch-version: false
+    track-merge-target: false
+    source-branches: ['main']
+
+ignore:
+  sha: []
+
+merge-message-formats: {}
+
+# Version increment rules
+major-version-bump-message: '\+semver:\s?(breaking|major)'
+minor-version-bump-message: '\+semver:\s?(feature|minor)'
+patch-version-bump-message: '\+semver:\s?(fix|patch)'
+no-bump-message: '\+semver:\s?(none|skip)'
+
+# Legacy support
+legacy-semver-padding: 4
+build-metadata-padding: 4
+
+# Commit message parsing
+commit-message-incrementing: Enabled

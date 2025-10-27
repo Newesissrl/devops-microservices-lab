@@ -43,14 +43,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Determine image tag to deploy
+      # Determine image tag to deploy (prioritize semantic versions)
       - name: Determine image tag
         id: tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+            echo "Manual deployment with tag: $IMAGE_TAG"
           else
-            IMAGE_TAG="main-${{ github.sha }}"
+            # Check if this push has a semantic version tag
+            LATEST_TAG=$(git describe --tags --exact-match HEAD 2>/dev/null || echo "")
+            if [[ "$LATEST_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+              IMAGE_TAG="$LATEST_TAG"
+              echo "Using semantic version tag: $IMAGE_TAG"
+            else
+              IMAGE_TAG="main-${{ github.sha }}"
+              echo "Using commit-based tag: $IMAGE_TAG"
+            fi
           fi
           echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "Deploying image tag: $IMAGE_TAG"

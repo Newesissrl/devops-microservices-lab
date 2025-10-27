@@ -177,11 +177,22 @@ open http://localhost:3030
 # Development (automatic)
 git push origin develop  # Triggers automatic deployment to dev
 
-# Staging (manual approval)
-git push origin main     # Triggers staging deployment with approval
+# Staging (semantic versioning)
+git push origin main     # Creates semantic version tag and deploys to staging
 
 # Production (strict approval)
-# Use GitHub Actions manual trigger with staging-validated image tag
+# Use GitHub Actions manual trigger with semantic version (e.g., v1.2.3)
+```
+
+### **Semantic Versioning**
+```bash
+# Automatic version calculation based on conventional commits
+git commit -m "feat: add new expense category +semver: minor"
+git commit -m "fix: resolve authentication issue +semver: patch"
+git commit -m "feat!: breaking API changes +semver: major"
+
+# Push to main creates semantic version tag automatically
+git push origin main  # Creates v1.2.3 tag and triggers release
 ```
 
 ## Message Flow

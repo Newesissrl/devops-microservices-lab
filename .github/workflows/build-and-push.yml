@@ -5,9 +5,22 @@
 name: Build and Push Images
 
 # Trigger Configuration
-# Only runs after code is merged to main branches (post-security validation)
+# Supports both automatic builds and semantic version releases
 on:
-  workflow_dispatch:  # Allow manual triggering for releases
+  workflow_dispatch:  # Manual triggering with version support
+    inputs:
+      version_tag:
+        description: 'Semantic version tag (e.g., v1.2.3)'
+        required: false
+        type: string
+      deploy_to_staging:
+        description: 'Deploy to staging after build'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
   push:
     paths:
       - 'packages/**'  # Only trigger when application code changes
@@ -49,18 +62,37 @@ jobs:
           username: ${{ github.actor }}     # GitHub username
           password: ${{ secrets.GITHUB_TOKEN }}  # Automatic GitHub token
 
-      # Generate image tags and metadata
+      # Determine version and tags
+      - name: Determine version and tags
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version_tag }}" ]; then
+            # Manual dispatch with semantic version
+            VERSION_TAG="${{ github.event.inputs.version_tag }}"
+            TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:${VERSION_TAG}"
+            TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:latest"
+            echo "Using semantic version: $VERSION_TAG"
+          else
+            # Automatic build with commit-based tags
+            if [ "${{ github.ref_name }}" = "main" ]; then
+              TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:main-${{ github.sha }}"
+              TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:latest"
+            else
+              TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:${{ github.ref_name }}-${{ github.sha }}"
+            fi
+            VERSION_TAG="${{ github.ref_name }}-${{ github.sha }}"
+          fi
+          
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+          echo "version_tag=$VERSION_TAG" >> $GITHUB_OUTPUT
+          echo "Generated tags: $TAGS"
+
+      # Extract metadata for labels
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # Image name format: ghcr.io/owner/repo/service
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}
-          # Tag strategy:
-          tags: |
-            type=sha,prefix={{branch}}-,format=short  # branch-abc1234
-            type=ref,event=branch                     # branch name
-            type=ref,event=pr                         # PR number
 
       # Build Docker image and push to registry
       - name: Build and push
@@ -69,5 +101,30 @@ jobs:
           context: ./packages/${{ matrix.service }}  # Build context for each service
           target: production                         # Use production stage (runs tests first)
           push: true                                # Push to registry
-          tags: ${{ steps.meta.outputs.tags }}     # Apply generated tags
+          tags: ${{ steps.version.outputs.tags }}  # Apply version-based tags
           labels: ${{ steps.meta.outputs.labels }} # Apply metadata labels
+          build-args: |
+            VERSION=${{ steps.version.outputs.version_tag }}
+            BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+            VCS_REF=${{ github.sha }}
+
+  # Job 2: Trigger Staging Deployment (if requested)
+  trigger-staging:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event.inputs.deploy_to_staging == 'true' && github.event.inputs.version_tag != ''
+    
+    steps:
+      - name: Trigger staging deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy-staging.yml',
+              ref: 'main',
+              inputs: {
+                image_tag: '${{ github.event.inputs.version_tag }}'
+              }
+            });

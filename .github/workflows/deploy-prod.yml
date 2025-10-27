@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: 'Staging-validated image tag to promote (e.g., main-abc1234)'
+        description: 'Staging-validated semantic version to promote (e.g., v1.2.3)'
         required: true
         type: string
       deployment_strategy:
@@ -54,11 +54,18 @@ jobs:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole-prod
           aws-region: ${{ env.AWS_REGION }}
 
-      # Validate image exists and was tested in staging
+      # Validate semantic version and staging deployment
       - name: Validate staging deployment
         run: |
           IMAGE_TAG="${{ github.event.inputs.image_tag }}"
           echo "Validating production readiness for: $IMAGE_TAG"
+          
+          # Validate semantic version format
+          if [[ ! "$IMAGE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            echo "❌ Invalid semantic version format: $IMAGE_TAG"
+            echo "Expected format: v1.2.3 or v1.2.3-beta.1"
+            exit 1
+          fi
           
           # Verify images exist in registry
           SERVICES=("backend" "frontend" "processor")
@@ -67,6 +74,8 @@ jobs:
             docker manifest inspect "$IMAGE" > /dev/null
             echo "✅ $service image validated: $IMAGE"
           done
+          
+          echo "✅ Semantic version $IMAGE_TAG validated for production deployment"
 
       # Security scan for production images
       - name: Production security scan
