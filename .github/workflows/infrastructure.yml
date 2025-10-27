@@ -206,13 +206,15 @@ jobs:
       - name: Terraform Plan
         id: plan
         working-directory: devops/terraform/environments/${{ matrix.environment }}
+        env:
+          ENVIRONMENT_UPPER: ${{ matrix.environment == 'dev' && 'DEV' || matrix.environment == 'staging' && 'STAGING' || 'PROD' }}
         run: |
           # Generate plan with detailed output
           terraform plan \
             -detailed-exitcode \
             -out=tfplan-${{ matrix.environment }} \
             -var="environment=${{ matrix.environment }}" \
-            -var="db_password=${{ secrets[format('{0}_DB_PASSWORD', matrix.environment | upper)] }}" \
+            -var="db_password=${{ secrets[format('{0}_DB_PASSWORD', env.ENVIRONMENT_UPPER)] }}" \
             > plan-output.txt 2>&1
           
           # Capture exit code (0=no changes, 1=error, 2=changes)
@@ -380,12 +382,14 @@ jobs:
       # Detect configuration drift
       - name: Detect drift
         working-directory: devops/terraform/environments/${{ matrix.environment }}
+        env:
+          ENVIRONMENT_UPPER: ${{ matrix.environment == 'dev' && 'DEV' || matrix.environment == 'staging' && 'STAGING' || 'PROD' }}
         run: |
           # Run plan to detect drift
           terraform plan \
             -detailed-exitcode \
             -var="environment=${{ matrix.environment }}" \
-            -var="db_password=${{ secrets[format('{0}_DB_PASSWORD', matrix.environment | upper)] }}" \
+            -var="db_password=${{ secrets[format('{0}_DB_PASSWORD', env.ENVIRONMENT_UPPER)] }}" \
             > drift-report.txt 2>&1
           
           DRIFT_EXIT_CODE=$?
