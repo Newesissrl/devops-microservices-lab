@@ -1,0 +1,105 @@
+{
+  "_comment": "Development Environment Configuration",
+  "_gitops_principle": "Environment-specific configuration stored in Git for version control and auditability",
+  
+  "environment": "dev",
+  "region": "us-west-2",
+  
+  "application": {
+    "name": "expenses-app",
+    "version": "1.0.0",
+    "_version_note": "Version should be updated by CI/CD pipeline"
+  },
+  
+  "database": {
+    "type": "postgresql",
+    "host": "expenses-app-dev-db.cluster-xyz.us-west-2.rds.amazonaws.com",
+    "port": 5432,
+    "name": "expenses",
+    "_connection_note": "Actual credentials stored in AWS Parameter Store, not in Git"
+  },
+  
+  "redis": {
+    "_note": "Redis configuration for session storage and caching",
+    "enabled": false,
+    "_dev_note": "Disabled in dev to reduce costs, enabled in staging/prod"
+  },
+  
+  "logging": {
+    "level": "debug",
+    "format": "json",
+    "cloudwatch": {
+      "enabled": true,
+      "log_group": "/ecs/expenses-app-dev",
+      "retention_days": 7
+    },
+    "_dev_settings": "Debug level and short retention for development"
+  },
+  
+  "monitoring": {
+    "metrics": {
+      "enabled": true,
+      "namespace": "ExpensesApp/Dev"
+    },
+    "tracing": {
+      "enabled": false,
+      "_note": "X-Ray tracing disabled in dev to reduce costs"
+    }
+  },
+  
+  "security": {
+    "cors": {
+      "enabled": true,
+      "origins": ["http://localhost:3030", "https://dev.expenses-app.com"],
+      "_dev_note": "Permissive CORS for development"
+    },
+    "rate_limiting": {
+      "enabled": false,
+      "_dev_note": "Disabled for easier development and testing"
+    }
+  },
+  
+  "features": {
+    "_feature_flags": "Control feature rollout across environments",
+    "file_upload": true,
+    "export_functionality": true,
+    "advanced_reporting": false,
+    "_dev_features": "Some features disabled in dev environment"
+  },
+  
+  "external_services": {
+    "rabbitmq": {
+      "enabled": true,
+      "host": "expenses-rabbitmq-dev.mq.us-west-2.amazonaws.com",
+      "_note": "Amazon MQ for RabbitMQ in AWS"
+    },
+    "s3": {
+      "bucket": "expenses-app-dev-uploads",
+      "region": "us-west-2",
+      "_lifecycle": "Objects deleted after 30 days in dev"
+    }
+  },
+  
+  "scaling": {
+    "_auto_scaling_config": "ECS service auto-scaling parameters",
+    "min_capacity": 1,
+    "max_capacity": 4,
+    "target_cpu": 70,
+    "target_memory": 80,
+    "_dev_scaling": "Lower limits for cost optimization"
+  },
+  
+  "_deployment_strategy": {
+    "type": "rolling",
+    "health_check_grace_period": 300,
+    "deployment_timeout": 600,
+    "rollback_on_failure": true
+  },
+  
+  "_gitops_workflow": {
+    "auto_deploy": true,
+    "approval_required": false,
+    "notification_channels": ["#dev-deployments"],
+    "_dev_workflow": "Automatic deployment on merge to develop branch"
+  }
+}
