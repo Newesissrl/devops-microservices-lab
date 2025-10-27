@@ -64,6 +64,8 @@ logs/
 *.parquet
 *.json
 !renovate*.json
+!config**/*.json
+!oidc-trust-policy.json
 !package*.json
 !tsconfig*.json
 !auth.json.example
