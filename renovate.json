@@ -1,0 +1,111 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":separatePatchReleases"
+  ],
+  "timezone": "America/New_York",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "assignees": ["@raunodepasquale"],
+  "reviewers": ["@raunodepasquale"],
+  "labels": ["dependencies"],
+  "commitMessagePrefix": "chore(deps):",
+  "semanticCommits": "enabled",
+  "packageRules": [
+    {
+      "description": "Group Node.js packages",
+      "matchManagers": ["npm"],
+      "matchPackagePatterns": ["*"],
+      "groupName": "nodejs dependencies",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Group Python packages",
+      "matchManagers": ["pip_requirements"],
+      "matchPackagePatterns": ["*"],
+      "groupName": "python dependencies",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Group .NET packages",
+      "matchManagers": ["nuget"],
+      "matchPackagePatterns": ["*"],
+      "groupName": "dotnet dependencies",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Group Terraform providers",
+      "matchManagers": ["terraform"],
+      "matchDepTypes": ["provider"],
+      "groupName": "terraform providers",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Group Terraform modules",
+      "matchManagers": ["terraform"],
+      "matchDepTypes": ["module"],
+      "groupName": "terraform modules",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Group Helm charts",
+      "matchManagers": ["helm-values", "helmv3"],
+      "matchPackagePatterns": ["*"],
+      "groupName": "helm charts",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Group Docker base images",
+      "matchManagers": ["dockerfile"],
+      "matchPackagePatterns": ["*"],
+      "groupName": "docker images",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Group GitHub Actions",
+      "matchManagers": ["github-actions"],
+      "matchPackagePatterns": ["*"],
+      "groupName": "github actions",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Auto-merge patch updates for stable packages",
+      "matchUpdateTypes": ["patch"],
+      "matchPackagePatterns": [
+        "^express$",
+        "^mongoose$",
+        "^react$",
+        "^react-dom$",
+        "^axios$",
+        "^dotenv$"
+      ],
+    "automerge": false
+    },
+    {
+      "description": "Pin Docker digests",
+      "matchManagers": ["dockerfile"],
+      "pinDigests": true
+    }
+  ],
+"vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"]
+  },
+  "prCreation": "immediate",
+  "rebaseWhen": "conflicted",
+  "platformAutomerge": true
+  "osvVulnerabilityAlerts": true,
+  "separateMinorPatch": true,
+  "separateMajorMinor": true,
+  "rangeStrategy": "bump",
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/venv/**",
+    "**/bin/**",
+    "**/obj/**"
+  ]
+}

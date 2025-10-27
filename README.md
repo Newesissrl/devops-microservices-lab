@@ -161,6 +161,24 @@ Each component uses environment variables:
 - Log aggregation and analysis
 - Performance monitoring and optimization
 
+## Dependency Management
+
+### **Automated Updates with Renovate**
+Renovate automatically manages dependency updates across all technologies:
+
+- **Node.js**: npm packages in frontend and backend
+- **Python**: pip requirements in processor
+- **C#**: NuGet packages in lake publisher
+- **Terraform**: providers and modules
+- **Helm**: chart dependencies
+- **Docker**: base image updates with digest pinning
+- **GitHub Actions**: workflow dependencies
+
+**Schedule**: Weekly updates on Monday mornings
+**Security**: Immediate vulnerability alerts
+**Grouping**: Dependencies grouped by technology for easier review
+**Auto-merge**: Patch updates for stable packages
+
 ## Development Workflow
 
 ### **Local Development**
@@ -281,6 +299,7 @@ packages/
 - **Scalable Infrastructure**: Auto-scaling ECS services with ALB
 - **High Availability**: Multi-AZ deployment with health checks
 - **Disaster Recovery**: Automated backup and rollback procedures
+- **Dependency Management**: Automated updates with Renovate across all technologies
 
 ### **📊 Comprehensive Monitoring**
 - **Infrastructure Metrics**: CPU, memory, network, storage monitoring

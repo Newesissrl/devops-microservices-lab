@@ -1,0 +1,56 @@
+name: Renovate PR Validation
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'packages/**/package*.json'
+      - 'packages/**/requirements.txt'
+      - 'packages/**/*.csproj'
+      - 'devops/terraform/**/*.tf'
+      - 'devops/helm/**/Chart.yaml'
+      - '**/Dockerfile*'
+      - '.github/workflows/*.yml'
+
+jobs:
+  validate-renovate-pr:
+    if: github.actor == 'renovate[bot]'
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Security Scan
+      uses: ./.github/workflows/security.yml
+      
+    - name: Build and Test
+      uses: ./.github/workflows/build-and-push.yml
+      with:
+        push-images: false
+        
+    - name: Validate Infrastructure
+      if: contains(github.head_ref, 'terraform')
+      run: |
+        cd devops/terraform
+        terraform fmt -check -recursive
+        terraform validate
+        
+    - name: Auto-approve safe updates
+      if: |
+        contains(github.head_ref, 'patch') && 
+        (contains(github.head_ref, 'nodejs') || 
+         contains(github.head_ref, 'python') || 
+         contains(github.head_ref, 'dotnet'))
+      uses: hmarr/auto-approve-action@v3
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Enable auto-merge for approved PRs
+      if: |
+        contains(github.head_ref, 'patch') && 
+        (contains(github.head_ref, 'nodejs') || 
+         contains(github.head_ref, 'python') || 
+         contains(github.head_ref, 'dotnet'))
+      run: gh pr merge --auto --squash "${{ github.event.pull_request.number }}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

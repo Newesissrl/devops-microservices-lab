@@ -63,6 +63,7 @@ logs/
 # Data files
 *.parquet
 *.json
+!renovate*.json
 !package*.json
 !tsconfig*.json
 !auth.json.example
