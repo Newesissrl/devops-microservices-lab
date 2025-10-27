@@ -1,0 +1,345 @@
+# GitOps Staging Deployment Workflow
+# Deploys to staging environment after manual approval
+# Demonstrates GitOps principle: Controlled promotion with approval gates
+
+name: Deploy to Staging
+
+# GitOps Trigger: Manual deployment to staging with approval
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (e.g., main-abc1234)'
+        required: true
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'devops/ecs/**'
+      - 'config/environments/staging/**'
+
+# Required permissions for AWS deployment and approvals
+permissions:
+  contents: read
+  id-token: write
+  deployments: write
+
+# Environment variables for staging deployment
+env:
+  AWS_REGION: us-west-2
+  ECS_CLUSTER: expenses-app-staging
+  ENVIRONMENT: staging
+
+jobs:
+  # Job 1: Pre-deployment Validation
+  # GitOps: Validate before deployment to prevent issues
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Determine image tag to deploy
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+          else
+            IMAGE_TAG="main-${{ github.sha }}"
+          fi
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "Deploying image tag: $IMAGE_TAG"
+
+      # Configure AWS credentials for validation
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole-staging
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Validate that images exist in registry
+      - name: Validate container images
+        run: |
+          SERVICES=("backend" "frontend" "processor")
+          for service in "${SERVICES[@]}"; do
+            IMAGE="ghcr.io/${{ github.repository }}/$service:${{ steps.tag.outputs.image_tag }}"
+            echo "Validating image: $IMAGE"
+            
+            # Check if image exists (this will fail if image doesn't exist)
+            docker manifest inspect "$IMAGE" > /dev/null
+            echo "✅ $service image validated"
+          done
+
+  # Job 2: Infrastructure Updates (if needed)
+  # GitOps: Infrastructure changes deployed before application
+  infrastructure:
+    runs-on: ubuntu-latest
+    needs: validate
+    if: contains(github.event.head_commit.modified, 'devops/terraform/environments/staging/')
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Configure AWS credentials with OIDC
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole-staging
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Install SOPS for secrets decryption
+      - name: Install SOPS
+        run: |
+          curl -LO https://github.com/mozilla/sops/releases/latest/download/sops-v3.8.1.linux.amd64
+          sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+          sudo chmod +x /usr/local/bin/sops
+
+      # Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      # Deploy infrastructure changes
+      - name: Deploy infrastructure
+        working-directory: devops/terraform/environments/staging
+        run: |
+          # SOPS automatically decrypts secrets.enc.tfvars
+          terraform init
+          terraform plan -out=tfplan
+          terraform apply tfplan
+
+  # Job 3: Blue-Green Deployment to Staging
+  # GitOps: Zero-downtime deployment with approval gate
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [validate, infrastructure]
+    if: always() && needs.validate.result == 'success' && (needs.infrastructure.result == 'success' || needs.infrastructure.result == 'skipped')
+    
+    # Staging environment requires approval
+    environment:
+      name: staging
+      url: ${{ steps.endpoint.outputs.application_url }}
+    
+    strategy:
+      matrix:
+        service: [backend, frontend, processor]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole-staging
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Login to GitHub Container Registry
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Blue-Green Deployment: Update task definition
+      - name: Update task definition
+        id: task-def
+        run: |
+          # Get current task definition
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition expenses-${{ matrix.service }}-staging \
+            --query 'taskDefinition' \
+            --output json)
+          
+          # Update with new image tag
+          NEW_IMAGE="ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ needs.validate.outputs.image_tag }}"
+          
+          # Create new task definition
+          echo $TASK_DEF | jq --arg IMAGE "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)' \
+            > new-task-def.json
+          
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-def.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          
+          echo "task-def-arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+      # Deploy with blue-green strategy
+      - name: Deploy to ECS
+        run: |
+          # Update ECS service with new task definition
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service expenses-${{ matrix.service }} \
+            --task-definition ${{ steps.task-def.outputs.task-def-arn }} \
+            --force-new-deployment
+
+      # Wait for deployment completion
+      - name: Wait for deployment
+        run: |
+          echo "Waiting for ${{ matrix.service }} deployment to complete..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services expenses-${{ matrix.service }}
+          
+          echo "✅ ${{ matrix.service }} deployment completed"
+
+  # Job 4: Integration Testing
+  # GitOps: Automated testing validates deployment success
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: deploy
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole-staging
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Get application endpoint
+      - name: Get application endpoint
+        id: endpoint
+        run: |
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names expenses-app-staging-alb \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text)
+          echo "alb-dns=$ALB_DNS" >> $GITHUB_OUTPUT
+          echo "application_url=https://$ALB_DNS" >> $GITHUB_OUTPUT
+
+      # Run integration tests
+      - name: Run integration tests
+        run: |
+          ENDPOINT="https://${{ steps.endpoint.outputs.alb-dns }}"
+          
+          echo "Running integration tests against: $ENDPOINT"
+          
+          # Test frontend availability
+          if curl -f -s "$ENDPOINT" > /dev/null; then
+            echo "✅ Frontend is accessible"
+          else
+            echo "❌ Frontend test failed"
+            exit 1
+          fi
+          
+          # Test backend API
+          if curl -f -s "$ENDPOINT/api/" > /dev/null; then
+            echo "✅ Backend API is accessible"
+          else
+            echo "❌ Backend API test failed"
+            exit 1
+          fi
+          
+          # Test API endpoints
+          API_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$ENDPOINT/api/expenses")
+          if [ "$API_RESPONSE" = "401" ] || [ "$API_RESPONSE" = "200" ]; then
+            echo "✅ API endpoints responding correctly"
+          else
+            echo "❌ API test failed with status: $API_RESPONSE"
+            exit 1
+          fi
+
+      # Performance testing
+      - name: Basic performance test
+        run: |
+          ENDPOINT="https://${{ steps.endpoint.outputs.alb-dns }}"
+          
+          echo "Running basic performance test..."
+          
+          # Simple load test with curl
+          for i in {1..10}; do
+            RESPONSE_TIME=$(curl -o /dev/null -s -w "%{time_total}" "$ENDPOINT")
+            echo "Request $i: ${RESPONSE_TIME}s"
+            
+            # Fail if response time > 5 seconds
+            if (( $(echo "$RESPONSE_TIME > 5.0" | bc -l) )); then
+              echo "❌ Performance test failed: Response time too high"
+              exit 1
+            fi
+          done
+          
+          echo "✅ Performance test passed"
+
+  # Job 5: Update Configuration
+  # GitOps: Apply staging-specific configuration
+  update-config:
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole-staging
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Install SOPS for configuration management
+      - name: Install SOPS
+        run: |
+          curl -LO https://github.com/mozilla/sops/releases/latest/download/sops-v3.8.1.linux.amd64
+          sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+          sudo chmod +x /usr/local/bin/sops
+
+      # Update staging configuration
+      - name: Update configuration
+        run: |
+          # Update application configuration in Parameter Store
+          CONFIG_FILE="config/environments/staging/app-config.json"
+          
+          if [ -f "$CONFIG_FILE" ]; then
+            jq -r 'to_entries[] | select(.key != "_comment" and .key != "_gitops_principle") | "/expenses-app/staging/\(.key) \(.value | tostring)"' $CONFIG_FILE | \
+            while read param_name param_value; do
+              aws ssm put-parameter \
+                --name "$param_name" \
+                --value "$param_value" \
+                --type "String" \
+                --overwrite || true
+            done
+            
+            echo "✅ Staging configuration updated"
+          fi
+
+  # Job 6: Deployment Summary
+  # GitOps: Comprehensive deployment reporting
+  summary:
+    runs-on: ubuntu-latest
+    needs: [validate, deploy, integration-tests, update-config]
+    if: always()
+    
+    steps:
+      - name: Deployment summary
+        run: |
+          echo "## 🚀 Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: Staging" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image Tag**: ${{ needs.validate.outputs.image_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment Time**: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Validation**: ${{ needs.validate.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment**: ${{ needs.deploy.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Integration Tests**: ${{ needs.integration-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Configuration**: ${{ needs.update-config.result }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.integration-tests.result }}" = "success" ]; then
+            echo "- **Status**: ✅ Ready for Production" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Status**: ❌ Not Ready for Production" >> $GITHUB_STEP_SUMMARY
+          fi

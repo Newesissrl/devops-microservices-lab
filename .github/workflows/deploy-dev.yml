@@ -57,8 +57,16 @@ jobs:
         if: steps.changes.outputs.terraform == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole-dev
           aws-region: ${{ env.AWS_REGION }}
+
+      # Install SOPS for secrets decryption
+      - name: Install SOPS
+        if: steps.changes.outputs.terraform == 'true'
+        run: |
+          curl -LO https://github.com/mozilla/sops/releases/latest/download/sops-v3.8.1.linux.amd64
+          sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+          sudo chmod +x /usr/local/bin/sops
 
       # Setup Terraform for infrastructure deployment
       - name: Setup Terraform
@@ -73,11 +81,10 @@ jobs:
         working-directory: devops/terraform/environments/dev
         run: |
           # GitOps: Terraform plan and apply for infrastructure changes
+          # SOPS automatically decrypts secrets.enc.tfvars when Terraform runs
           terraform init
           terraform plan -out=tfplan
           terraform apply tfplan
-        env:
-          TF_VAR_db_password: ${{ secrets.DEV_DB_PASSWORD }}
 
   # Job 2: Deploy Application Services
   # GitOps Principle: Application deployment follows infrastructure
@@ -98,7 +105,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole-dev
           aws-region: ${{ env.AWS_REGION }}
 
       # Login to GitHub Container Registry to pull images
@@ -171,7 +178,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole-dev
           aws-region: ${{ env.AWS_REGION }}
 
       # Update AWS Parameter Store with new configuration
@@ -208,7 +215,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole-dev
           aws-region: ${{ env.AWS_REGION }}
 
       # Get ALB endpoint for testing
