@@ -1,0 +1,35 @@
+# SOPS Configuration for Secrets Management
+# This file defines encryption rules for different file types and environments
+
+creation_rules:
+  # Terraform backend configuration secrets
+  - path_regex: devops/terraform/backend/.*\.enc\.tfvars$
+    kms: 'arn:aws:kms:us-west-2:ACCOUNT_ID:key/terraform-backend-key'
+    aws_profile: terraform-backend
+    
+  # Environment-specific Terraform secrets
+  - path_regex: devops/terraform/environments/dev/.*\.enc\.tfvars$
+    kms: 'arn:aws:kms:us-west-2:ACCOUNT_ID:key/dev-secrets-key'
+    aws_profile: dev
+    
+  - path_regex: devops/terraform/environments/staging/.*\.enc\.tfvars$
+    kms: 'arn:aws:kms:us-west-2:ACCOUNT_ID:key/staging-secrets-key'
+    aws_profile: staging
+    
+  - path_regex: devops/terraform/environments/prod/.*\.enc\.tfvars$
+    kms: 'arn:aws:kms:us-west-2:ACCOUNT_ID:key/prod-secrets-key'
+    aws_profile: prod
+    
+  # Helm chart secrets
+  - path_regex: devops/helm/.*/secrets\.yaml$
+    kms: 'arn:aws:kms:us-west-2:ACCOUNT_ID:key/helm-secrets-key'
+    aws_profile: helm-secrets
+    
+  # Kubernetes secrets
+  - path_regex: devops/kubernetes/.*secrets.*\.yaml$
+    kms: 'arn:aws:kms:us-west-2:ACCOUNT_ID:key/k8s-secrets-key'
+    aws_profile: k8s-secrets
+
+# Global settings
+encrypted_regex: '^(password|secret|key|token|private_key|cert)$'
+mac_only_encrypted: false

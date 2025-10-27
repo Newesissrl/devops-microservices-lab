@@ -67,13 +67,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Configure AWS credentials using OIDC
+      # Configure AWS credentials using OIDC (no long-lived credentials needed)
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole-${{ matrix.environment }}
           aws-region: us-west-2
           role-session-name: terraform-${{ matrix.environment }}-${{ github.run_id }}
+
+      # Install SOPS for secrets decryption
+      - name: Install SOPS
+        run: |
+          curl -LO https://github.com/mozilla/sops/releases/latest/download/sops-v3.8.1.linux.amd64
+          sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+          sudo chmod +x /usr/local/bin/sops
 
       # Setup Terraform with version pinning
       - name: Setup Terraform
@@ -207,12 +214,12 @@ jobs:
         id: plan
         working-directory: devops/terraform/environments/${{ matrix.environment }}
         run: |
-          # Generate plan with detailed output
+          # SOPS automatically decrypts secrets.enc.tfvars when Terraform runs
+          # No need to pass secrets as variables - they're loaded from SOPS data sources
           terraform plan \
             -detailed-exitcode \
             -out=tfplan-${{ matrix.environment }} \
             -var="environment=${{ matrix.environment }}" \
-            -var="db_password=${{ secrets[format('{0}_DB_PASSWORD', matrix.environment | upper)] }}" \
             > plan-output.txt 2>&1
           
           # Capture exit code (0=no changes, 1=error, 2=changes)

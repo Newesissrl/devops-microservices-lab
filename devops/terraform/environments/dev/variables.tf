@@ -19,8 +19,5 @@ variable "environment" {
   default     = "dev"
 }
 
-variable "db_password" {
-  description = "Database password - should be passed via environment variable"
-  type        = string
-  sensitive   = true
-}
+# Database password now managed via SOPS in secrets.enc.tfvars
+# No need for environment variables or manual secret management

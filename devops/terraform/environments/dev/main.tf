@@ -97,8 +97,8 @@ resource "aws_db_instance" "mongodb_replacement" {
   
   # Database Settings
   db_name  = "expenses"
-  username = "dbadmin"
-  password = var.db_password  # Passed via environment variable
+  username = data.sops_file.secrets.data["db_master_username"]
+  password = data.sops_file.secrets.data["db_password"]
   
   # Network Configuration
   vpc_security_group_ids = [aws_security_group.rds.id]
