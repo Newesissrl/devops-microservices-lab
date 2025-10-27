@@ -146,8 +146,8 @@ Each component uses environment variables:
 Frontend → Backend API → MongoDB
                     ↓
                 RabbitMQ → Processor → JSON Files
-                    ↓
-            Lake Publisher → Parquet Files
+                    
+Backend API → Lake Publisher → Parquet Files
 ```
 
 ## Project Structure
@@ -176,3 +176,22 @@ packages/
 6. **Documentation** explaining architectural decisions and deployment strategies
 
 For detailed setup and configuration of individual services, see README files in each package directory.
+
+## How to Navigate the Evolution of the Project
+
+This repository is structured as a progressive learning path through different branches, each building upon the previous to demonstrate complete DevOps transformation:
+
+### **Branch Structure & Learning Path**
+
+- **`main`** - Starting point with pure application code (what developers deliver to DevOps teams)
+- **`phase1/containers`** - Basic containerization with Dockerfiles, docker-compose for local development, and GitHub Actions workflow for automated container builds and registry publishing
+- **`phase2/kubernetes`** - Kubernetes deployment manifests and basic orchestration setup
+- **`phase3/helm`** - Helm charts for templated Kubernetes deployments with environment management
+- **`phase4/devsecops`** - Security integration with SAST, container scanning, and infrastructure security validation
+- **`phase5/gitops`** - Complete GitOps implementation with Terraform infrastructure as code and automated deployments
+- **`phase6/secrets-management`** - SOPS encryption with AWS KMS for secure secrets management without long-lived credentials
+- **`phase7/versioning`** - Semantic versioning with GitVersion for automated release management, container tagging, and dependency management with Renovate - complete production-ready solution
+
+**Recommended Learning Sequence**: Start with `main` (raw application code) and progress through each phase to understand how DevOps practices transform a basic application into a production-ready system, culminating in the complete enterprise solution on `phase7/versioning` branch.
+
+**Disclaimer**: This project is designed for educational purposes to demonstrate DevOps automation workflows and best practices. While we strive for accuracy, we do not guarantee that every component will function flawlessly, as bugs may be present in the code examples.
