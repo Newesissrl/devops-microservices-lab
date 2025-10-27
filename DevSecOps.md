@@ -227,7 +227,9 @@ Deploy → Health Check → Security Validation → Monitor
 |------------------|----------------|-------|------------|
 | **Code Scanning** | CodeQL SAST | `.github/workflows/security.yml` | ✅ Automated |
 | **Dependency Scanning** | Trivy container scan | `.github/workflows/security.yml` | ✅ Automated |
-| **Infrastructure Security** | Checkov policy scan | `.github/workflows/infrastructure.yml` | ✅ Automated |
+| **Infrastructure Security** | TFLint + tfsec + Checkov | `.github/workflows/infrastructure.yml` | ✅ Automated |
+| **Terraform Linting** | TFLint AWS ruleset | `devops/terraform/.tflint.hcl` | ✅ Automated |
+| **Terraform Security** | tfsec static analysis | `.github/workflows/infrastructure.yml` | ✅ Automated |
 | **Secrets Management** | AWS Parameter Store | `devops/ecs/task-definitions/` | ✅ Automated |
 | **Access Control** | IAM roles + OIDC | `.github/workflows/*.yml` | ✅ Automated |
 | **Network Security** | VPC + Security Groups | `devops/terraform/modules/` | ✅ Automated |

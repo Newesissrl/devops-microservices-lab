@@ -102,23 +102,105 @@ jobs:
         working-directory: devops/terraform/environments/${{ matrix.environment }}
         run: terraform fmt -check -recursive
 
-      # Security scan with Checkov
-      - name: Security Scan
+      # Terraform Linting with TFLint
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: Run TFLint
+        working-directory: devops/terraform/environments/${{ matrix.environment }}
+        run: |
+          # Initialize TFLint with AWS ruleset
+          tflint --init
+          
+          # Run TFLint with detailed output
+          tflint --format=sarif > tflint-${{ matrix.environment }}.sarif || true
+          
+          # Also run with compact format for PR comments
+          tflint --format=compact > tflint-results.txt || true
+          
+          echo "## 🔍 TFLint Results - ${{ matrix.environment }}" >> security-summary.md
+          if [ -s tflint-results.txt ]; then
+            echo '```' >> security-summary.md
+            cat tflint-results.txt >> security-summary.md
+            echo '```' >> security-summary.md
+          else
+            echo "✅ No TFLint issues found" >> security-summary.md
+          fi
+
+      # Terraform Security Scanning with tfsec
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: devops/terraform/environments/${{ matrix.environment }}
+          format: sarif
+          soft_fail: true
+          additional_args: --out tfsec-${{ matrix.environment }}.sarif
+
+      # Generate tfsec summary for PR comments
+      - name: Generate tfsec summary
+        working-directory: devops/terraform/environments/${{ matrix.environment }}
+        run: |
+          # Run tfsec with table format for summary
+          tfsec --format=table --out=tfsec-summary.txt . || true
+          
+          echo "## 🛡️ tfsec Security Scan - ${{ matrix.environment }}" >> security-summary.md
+          if [ -s tfsec-summary.txt ]; then
+            echo '```' >> security-summary.md
+            cat tfsec-summary.txt >> security-summary.md
+            echo '```' >> security-summary.md
+          else
+            echo "✅ No security issues found" >> security-summary.md
+          fi
+
+      # Policy compliance with Checkov
+      - name: Run Checkov compliance scan
         uses: bridgecrewio/checkov-action@master
         with:
           directory: devops/terraform/environments/${{ matrix.environment }}
           framework: terraform
           output_format: sarif
           output_file_path: checkov-${{ matrix.environment }}.sarif
-        continue-on-error: true
+          soft_fail: true
 
-      # Upload security scan results
-      - name: Upload security scan results
+      # Generate Checkov summary
+      - name: Generate Checkov summary
+        working-directory: devops/terraform/environments/${{ matrix.environment }}
+        run: |
+          # Run Checkov with compact format for summary
+          checkov -d . --framework terraform --compact --quiet > checkov-summary.txt || true
+          
+          echo "## 📋 Checkov Compliance - ${{ matrix.environment }}" >> security-summary.md
+          if [ -s checkov-summary.txt ]; then
+            echo '```' >> security-summary.md
+            head -20 checkov-summary.txt >> security-summary.md  # Limit output size
+            echo '```' >> security-summary.md
+          else
+            echo "✅ All compliance checks passed" >> security-summary.md
+          fi
+
+      # Upload all security scan results to GitHub Security tab
+      - name: Upload TFLint results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: devops/terraform/environments/${{ matrix.environment }}/tflint-${{ matrix.environment }}.sarif
+          category: tflint-${{ matrix.environment }}
+        if: always() && hashFiles('devops/terraform/environments/${{ matrix.environment }}/tflint-${{ matrix.environment }}.sarif') != ''
+
+      - name: Upload tfsec results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: devops/terraform/environments/${{ matrix.environment }}/tfsec-${{ matrix.environment }}.sarif
+          category: tfsec-${{ matrix.environment }}
+        if: always() && hashFiles('devops/terraform/environments/${{ matrix.environment }}/tfsec-${{ matrix.environment }}.sarif') != ''
+
+      - name: Upload Checkov results
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: checkov-${{ matrix.environment }}.sarif
-          category: terraform-${{ matrix.environment }}
-        if: always()
+          category: checkov-${{ matrix.environment }}
+        if: always() && hashFiles('checkov-${{ matrix.environment }}.sarif') != ''
 
       # Generate Terraform plan
       - name: Terraform Plan
@@ -161,23 +243,34 @@ jobs:
             devops/terraform/environments/${{ matrix.environment }}/plan-summary.md
         if: always()
 
-      # Comment on PR with plan results (if this is a PR)
-      - name: Comment PR with plan
+      # Comment on PR with plan and security results (if this is a PR)
+      - name: Comment PR with results
         uses: actions/github-script@v7
         if: github.event_name == 'pull_request'
         with:
           script: |
             const fs = require('fs');
-            const path = 'devops/terraform/environments/${{ matrix.environment }}/plan-summary.md';
+            let comment = '';
             
-            if (fs.existsSync(path)) {
-              const plan = fs.readFileSync(path, 'utf8');
-              
+            // Add Terraform plan results
+            const planPath = 'devops/terraform/environments/${{ matrix.environment }}/plan-summary.md';
+            if (fs.existsSync(planPath)) {
+              comment += fs.readFileSync(planPath, 'utf8') + '\n\n';
+            }
+            
+            // Add security scan results
+            const securityPath = 'devops/terraform/environments/${{ matrix.environment }}/security-summary.md';
+            if (fs.existsSync(securityPath)) {
+              comment += '# 🛡️ Terraform Security Analysis\n\n';
+              comment += fs.readFileSync(securityPath, 'utf8');
+            }
+            
+            if (comment) {
               github.rest.issues.createComment({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: plan
+                body: comment
               });
             }
 
