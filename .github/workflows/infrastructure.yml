@@ -384,6 +384,7 @@ jobs:
         working-directory: devops/terraform/environments/${{ matrix.environment }}
         env:
           ENVIRONMENT_UPPER: ${{ matrix.environment == 'dev' && 'DEV' || matrix.environment == 'staging' && 'STAGING' || 'PROD' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Run plan to detect drift
           terraform plan \
@@ -405,5 +406,3 @@ jobs:
           else
             echo "✅ No drift detected in ${{ matrix.environment }}"
           fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
