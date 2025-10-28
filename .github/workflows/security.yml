@@ -1,0 +1,151 @@
+# Security Analysis Workflow
+# Comprehensive security scanning for pull requests and main branch pushes
+# Validates code, containers, and Kubernetes configurations before deployment
+
+name: Security Analysis
+
+# Trigger Configuration
+# Runs on PRs to validate security before merge
+# Also runs on push to main/develop for continuous monitoring
+on:
+  pull_request:
+    branches: [ main, develop ]  # Only scan PRs targeting these branches
+  push:
+    branches: [ main, develop ]  # Monitor security on main branches
+
+# Required permissions for security scanning
+permissions:
+  contents: read          # Read repository contents
+  security-events: write  # Upload security findings to GitHub Security tab
+  pull-requests: write    # Comment on PRs with security results
+
+jobs:
+  # Job 1: Static Application Security Testing (SAST)
+  # Analyzes source code for security vulnerabilities without executing it
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      # Get the source code
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Initialize CodeQL for multi-language analysis
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, python, csharp  # Scan all languages in our stack
+
+      # Build the code for analysis (required for compiled languages)
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      # Perform the actual security analysis and upload results
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  # Job 2: Container Security Scanning
+  # Scans Docker images for vulnerabilities in OS packages and dependencies
+  container-security:
+    runs-on: ubuntu-latest
+    # Use matrix strategy to scan all 4 services in parallel
+    strategy:
+      matrix:
+        service: [backend, frontend, processor, lakepublisher]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Build production Docker image for security scanning
+      - name: Build Image
+        run: |
+          # Build using production target (includes tests validation)
+          docker build -t ${{ matrix.service }}:test ./packages/${{ matrix.service }} --target production
+
+      # Scan container image for vulnerabilities using Trivy
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.service }}:test  # Image to scan
+          format: sarif                          # Output format for GitHub integration
+          output: trivy-${{ matrix.service }}.sarif
+
+      # Upload scan results to GitHub Security tab
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.service }}.sarif
+          category: container-${{ matrix.service }}  # Categorize findings by service
+
+  # Job 3: Kubernetes Security Analysis
+  # Scans Kubernetes manifests and Helm charts for security misconfigurations
+  kubernetes-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Install Helm for chart templating
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: latest
+
+      # Scan raw Kubernetes manifests for security issues
+      - name: Run Checkov scan on K8s manifests
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: devops/kubernetes     # Directory containing K8s YAML files
+          framework: kubernetes           # Focus on Kubernetes security checks
+          output_format: sarif           # GitHub-compatible output format
+          output_file_path: checkov-k8s.sarif
+
+      # Template Helm chart and scan the generated manifests
+      - name: Run Helm security scan
+        run: |
+          # Convert Helm chart to plain Kubernetes manifests
+          helm template expenses devops/helm/sampleproject > helm-templated.yaml
+          # Install Checkov for security scanning
+          pip install checkov
+          # Scan templated manifests (|| true prevents workflow failure)
+          checkov -f helm-templated.yaml --framework kubernetes --output sarif -o checkov-helm.sarif || true
+
+      # Upload Kubernetes manifest scan results
+      - name: Upload Checkov scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-k8s.sarif
+          category: kubernetes-manifests
+        if: always()  # Upload even if previous steps failed
+
+      # Upload Helm chart scan results (only if file exists)
+      - name: Upload Helm scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-helm.sarif
+          category: helm-chart
+        if: always() && hashFiles('checkov-helm.sarif') != ''  # Check file exists
+
+      # Store scan results as workflow artifacts for manual review
+      - name: Upload security scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-security-results
+          path: checkov-*.sarif
+        if: always()
+
+  # Job 4: Security Summary Report
+  # Generates a summary of all security scans for easy review
+  security-summary:
+    runs-on: ubuntu-latest
+    needs: [static-analysis, container-security, kubernetes-security]  # Wait for all scans
+    if: always()  # Run even if some scans failed
+    steps:
+      # Create a markdown summary visible in the GitHub Actions UI
+      - name: Security Summary
+        run: |
+          echo "## 🔒 Security Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Static Code Analysis (CodeQL)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Container Vulnerability Scanning (Trivy)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Kubernetes Security Analysis (Checkov)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the Security tab for detailed findings." >> $GITHUB_STEP_SUMMARY

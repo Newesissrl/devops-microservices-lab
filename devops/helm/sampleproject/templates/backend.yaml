@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.backend.service.name }}
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: {{ .Values.backend.service.port }}
+      targetPort: {{ .Values.backend.service.targetPort }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.backend.replicaCount | default .Values.global.replicaCount }}
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      imagePullSecrets:
+      - name: {{ .Values.imagePullSecrets.name }}
+      containers:
+      - name: backend
+        image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Values.global.image.tag }}"
+        ports:
+        - containerPort: {{ .Values.backend.service.targetPort }}
+        resources:
+{{ toYaml .Values.backend.resources | indent 10 }}
+        env:
+        - name: MONGO_URI
+          value: "mongodb://{{ .Values.mongodb.service.name }}:27017/{{ .Values.mongodb.database }}"
+        - name: UPLOAD_PATH
+          value: "{{ .Values.backend.uploadPath }}"
+        - name: RABBITMQ_URL
+          value: "amqp://{{ .Values.rabbitmq.user }}:{{ .Values.rabbitmq.password }}@{{ .Values.rabbitmq.service.name }}"
+        - name: RABBITMQ_VHOST
+          value: "{{ .Values.rabbitmq.vhost }}"
+        - name: RABBITMQ_EXCHANGE
+          value: "{{ .Values.rabbitmq.exchange }}"
+        - name: JWT_SECRET
+          value: "{{ .Values.backend.jwtSecret }}"
+        volumeMounts:
+        - name: auth-config
+          mountPath: /app/auth.json
+          subPath: auth.json
+        - name: uploads
+          mountPath: /app/uploads
+        readinessProbe:
+{{ toYaml .Values.backend.readinessProbe | indent 10 }}
+      volumes:
+      - name: auth-config
+        configMap:
+          name: backend-auth
+      - name: uploads
+        emptyDir: {}

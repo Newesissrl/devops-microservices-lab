@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lakepublisher
+  namespace: expenses
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          imagePullSecrets:
+          - name: ghcr-secret
+          containers:
+          - name: lakepublisher
+            image: ghcr.io/your-org/your-repo/lakepublisher:latest
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+            env:
+            - name: API_BASE_URL
+              value: "http://backend-service:3000"
+            - name: TARGET_STATUS
+              value: "Approved"
+            - name: BASE_PATH
+              value: "/app/data"
+            - name: API_TOKEN
+              value: "lakepublisher-token-2024"
+            volumeMounts:
+            - name: data
+              mountPath: /app/data
+          volumes:
+          - name: data
+            emptyDir: {}
+          restartPolicy: OnFailure

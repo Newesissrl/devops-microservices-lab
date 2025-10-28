@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: ./packages/backend
+      dockerfile: Dockerfile.dev
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./packages/backend:/app
+      - /app/node_modules
+
+  frontend:
+    build:
+      context: ./packages/frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./packages/frontend:/app
+      - /app/node_modules
+    ports:
+      - "3030:3030"
+
+  processor:
+    build:
+      context: ./packages/processor
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./packages/processor:/app
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1

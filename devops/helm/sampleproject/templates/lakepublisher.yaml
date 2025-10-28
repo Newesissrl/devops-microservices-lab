@@ -1,0 +1,34 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lakepublisher
+  namespace: {{ .Values.namespace }}
+spec:
+  schedule: "{{ .Values.lakepublisher.schedule }}"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          imagePullSecrets:
+          - name: {{ .Values.imagePullSecrets.name }}
+          containers:
+          - name: lakepublisher
+            image: "{{ .Values.lakepublisher.image.repository }}:{{ .Values.lakepublisher.image.tag | default .Values.global.image.tag }}"
+            resources:
+{{ toYaml .Values.lakepublisher.resources | indent 14 }}
+            env:
+            - name: API_BASE_URL
+              value: "http://{{ .Values.backend.service.name }}:{{ .Values.backend.service.port }}"
+            - name: TARGET_STATUS
+              value: "{{ .Values.lakepublisher.targetStatus }}"
+            - name: BASE_PATH
+              value: "{{ .Values.lakepublisher.basePath }}"
+            - name: API_TOKEN
+              value: {{ first .Values.backend.auth.tokens }}
+            volumeMounts:
+            - name: data
+              mountPath: /app/data
+          volumes:
+          - name: data
+            emptyDir: {}
+          restartPolicy: OnFailure

@@ -1,0 +1,24 @@
+# prod environment specific values
+global:
+  replicaCount: 3
+
+frontend:
+  service:
+    type: LoadBalancer
+
+backend:
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "400m"
+
+mongodb:
+  persistence:
+    size: 20Gi
+
+rabbitmq:
+  persistence:
+    size: 10Gi
