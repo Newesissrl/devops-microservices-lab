@@ -1,0 +1,143 @@
+name: Security PR Check
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  security-events: write # To upload SARIF files
+  pull-requests: write   # To comment on PRs (tflint)
+  issues: read           # For tflint
+
+
+jobs:
+  # Job 1: SAST with CodeQL
+  codeql:
+    name: CodeQL SAST Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp, javascript, python
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  # Job 2: Trivy 
+  trivy:
+    name: Trivy (Config & Vuln) Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run Trivy filesystem scanner
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-fs.sarif'
+          exit-code: 1
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-fs.sarif'
+          category: 'trivy-fs'
+
+  # Job 3: Gitleaks
+  gitleaks:
+    name: Gitleaks (Secret) Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          report_format: sarif
+          report_path: gitleaks.sarif
+          fail: true
+      - name: Upload Gitleaks SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: 'gitleaks'
+
+  # Job 4: Advanced IaC Scans
+  # This job runs Terraform-specific tools:
+  # - tfsec: Security best practices (SARIF)
+  # - checkov: Security & compliance (SARIF)
+  # - tflint: Linting and style (PR Comment)
+  iac-scans:
+    name: IaC Scans (tfsec, checkov, tflint)
+    runs-on: ubuntu-latest
+    
+    # Permissions needed for SARIF upload and PR commenting
+    permissions:
+      contents: read
+      security-events: write 
+      pull-requests: write   
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- tfsec ---
+      - name: Run tfsec (SARIF)
+        uses: aquasecurity/tfsec-action@v1.2.0
+        with:
+          sarif_file: tfsec.sarif
+          working_directory: ./terraform
+          # Fail the job if issues are found
+          soft_fail: false 
+
+      - name: Upload tfsec SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: tfsec.sarif
+          category: 'tfsec'
+
+      # --- checkov ---
+      - name: Run checkov (SARIF)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: ./terraform
+          framework: terraform
+          output_format: sarif
+          output_file_path: "checkov.sarif"
+          # Fail the job if issues are found
+          soft_fail: false
+
+      - name: Upload checkov SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov.sarif
+          category: 'checkov'
+      
+      # --- tflint ---
+      - name: Setup TFLint
+        uses: tflint-actions/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: Init TFLint
+        # This initializes TFLint plugins
+        run: tflint --init
+        working-directory: ./terraform
+
+      - name: Run TFLint
+        uses: tflint-actions/tflint-action@v5
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          working_directory: ./terraform
+          # Post a comment to the PR
+          comment: true
+          # Fail the job if issues are found
+          error_on_fail: true
