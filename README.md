@@ -146,8 +146,8 @@ Each component uses environment variables:
 Frontend → Backend API → MongoDB
                     ↓
                 RabbitMQ → Processor → JSON Files
-                    ↓
-            Lake Publisher → Parquet Files
+                    
+Backend API → Lake Publisher → Parquet Files
 ```
 
 ## Project Structure
